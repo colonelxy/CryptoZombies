@@ -285,3 +285,312 @@ Great, we have finished our ERC721 implementation!
 
     emit Approval(msg.sender, _approved, _tokenId);
 
+## Chapter 9: Preventing Overflows
+
+Congratulations, that completes our ERC721 and ERC721x implementation!
+
+That wasn't so tough, was it? A lot of this Ethereum stuff sounds really complicated when you hear people talking about it, so the best way to understand it is to actually go through an implementation of it yourself.
+
+Keep in mind that this is only a minimal implementation. There are extra features we may want to add to our implementation, such as some extra checks to make sure users don't accidentally transfer their zombies to address 0 (which is called "burning" a token — basically it's sent to an address that no one has the private key of, essentially making it unrecoverable). Or to put some basic auction logic in the DApp itself. (Can you think of some ways we could implement that?)
+
+But we wanted to keep this lesson manageable, so we went with the most basic implementation. If you want to see an example of a more in-depth implementation, you can take a look at the OpenZeppelin ERC721 contract after this tutorial.
+Contract security enhancements: Overflows and Underflows
+
+We're going to look at one major security feature you should be aware of when writing smart contracts: Preventing overflows and underflows.
+
+What's an overflow?
+
+Let's say we have a uint8, which can only have 8 bits. That means the largest number we can store is binary 11111111 (or in decimal, 2^8 - 1 = 255).
+
+Take a look at the following code. What is number equal to at the end?
+
+uint8 number = 255;
+number++;
+
+In this case, we've caused it to overflow — so number is counterintuitively now equal to 0 even though we increased it. (If you add 1 to binary 11111111, it resets back to 00000000, like a clock going from 23:59 to 00:00).
+
+An underflow is similar, where if you subtract 1 from a uint8 that equals 0, it will now equal 255 (because uints are unsigned, and cannot be negative).
+
+While we're not using uint8 here, and it seems unlikely that a uint256 will overflow when incrementing by 1 each time (2^256 is a really big number), it's still good to put protections in our contract so that our DApp never has unexpected behavior in the future.
+Using SafeMath
+
+To prevent this, OpenZeppelin has created a library called SafeMath that prevents these issues by default.
+
+But before we get into that... What's a library?
+
+A library is a special type of contract in Solidity. One of the things it is useful for is to attach functions to native data types.
+
+For example, with the SafeMath library, we'll use the syntax using SafeMath for uint256. The SafeMath library has 4 functions — add, sub, mul, and div. And now we can access these functions from uint256 as follows:
+
+using SafeMath for uint256;
+
+uint256 a = 5;
+uint256 b = a.add(3); // 5 + 3 = 8
+uint256 c = a.mul(2); // 5 * 2 = 10
+
+We'll look at what these functions do in the next chapter, but for now let's add the SafeMath library to our contract.
+Putting it to the Test
+
+We've already included OpenZeppelin's SafeMath library for you in safemath.sol. You can take a quick peek at the code now if you want to, but we'll be looking at it in depth in the next chapter.
+
+First let's tell our contract to use SafeMath. We'll do this in ZombieFactory, our very base contract — that way we can use it in any of the sub-contracts that inherit from this one.
+
+    Import safemath.sol into zombiefactory.sol.
+
+    Add the declaration using SafeMath for uint256;.
+
+
+
+    import "./safemath.sol";
+
+contract ZombieFactory is Ownable {
+
+  using SafeMath for uint256;
+  }
+
+## Chapter 10: SafeMath Part 2
+
+Let's take a look at the code behind SafeMath:
+
+library SafeMath {
+
+  function mul(uint256 a, uint256 b) internal pure returns (uint256) {
+    if (a == 0) {
+      return 0;
+    }
+    uint256 c = a * b;
+    assert(c / a == b);
+    return c;
+  }
+
+  function div(uint256 a, uint256 b) internal pure returns (uint256) {
+    // assert(b > 0); // Solidity automatically throws when dividing by 0
+    uint256 c = a / b;
+    // assert(a == b * c + a % b); // There is no case in which this doesn't hold
+    return c;
+  }
+
+  function sub(uint256 a, uint256 b) internal pure returns (uint256) {
+    assert(b <= a);
+    return a - b;
+  }
+
+  function add(uint256 a, uint256 b) internal pure returns (uint256) {
+    uint256 c = a + b;
+    assert(c >= a);
+    return c;
+  }
+}
+
+First we have the library keyword — libraries are similar to contracts but with a few differences. For our purposes, libraries allow us to use the using keyword, which automatically tacks on all of the library's methods to another data type:
+
+using SafeMath for uint;
+// now we can use these methods on any uint
+uint test = 2;
+test = test.mul(3); // test now equals 6
+test = test.add(5); // test now equals 11
+
+Note that the mul and add functions each require 2 arguments, but when we declare using SafeMath for uint, the uint we call the function on (test) is automatically passed in as the first argument.
+
+Let's look at the code behind add to see what SafeMath does:
+
+function add(uint256 a, uint256 b) internal pure returns (uint256) {
+  uint256 c = a + b;
+  assert(c >= a);
+  return c;
+}
+
+Basically add just adds 2 uints like +, but it also contains an assert statement to make sure the sum is greater than a. This protects us from overflows.
+
+assert is similar to require, where it will throw an error if false. The difference between assert and require is that require will refund the user the rest of their gas when a function fails, whereas assert will not. So most of the time you want to use require in your code; assert is typically used when something has gone horribly wrong with the code (like a uint overflow).
+
+So, simply put, SafeMath's add, sub, mul, and div are functions that do the basic 4 math operations, but throw an error if an overflow or underflow occurs.
+Using SafeMath in our code.
+
+To prevent overflows and underflows, we can look for places in our code where we use +, -, *, or /, and replace them with add, sub, mul, div.
+
+Ex. Instead of doing:
+
+myUint++;
+
+We would do:
+
+myUint = myUint.add(1);
+
+Putting it to the Test
+
+We have 2 places in ZombieOwnership where we used math operations. Let's swap them out with SafeMath methods.
+
+    Replace ++ with a SafeMath method.
+
+    Replace -- with a SafeMath method.
+
+    ownerZombieCount[_to] = ownerZombieCount[_to].add(1);
+    ownerZombieCount[_from] = ownerZombieCount[_from].sub(1);
+
+## Chapter 11: SafeMath Part 3
+
+Great, now our ERC721 implementation is safe from overflows & underflows!
+
+Going back through the code we wrote in previous lessons, there's a few other places in our code that could be vulnerable to overflows or underflows.
+
+For example, in ZombieAttack we have:
+
+myZombie.winCount++;
+myZombie.level++;
+enemyZombie.lossCount++;
+
+We should prevent overflows here as well just to be safe. (It's a good idea in general to just use SafeMath instead of the basic math operations. Maybe in a future version of Solidity these will be implemented by default, but for now we have to take extra security precautions in our code).
+
+However we have a slight problem — winCount and lossCount are uint16s, and level is a uint32. So if we use SafeMath's add method with these as arguments, it won't actually protect us from overflow since it will convert these types to uint256:
+
+function add(uint256 a, uint256 b) internal pure returns (uint256) {
+  uint256 c = a + b;
+  assert(c >= a);
+  return c;
+}
+
+// If we call `.add` on a `uint8`, it gets converted to a `uint256`.
+// So then it won't overflow at 2^8, since 256 is a valid `uint256`.
+
+This means we're going to need to implement 2 more libraries to prevent overflow/underflows with our uint16s and uint32s. We can call them SafeMath16 and SafeMath32.
+
+The code will be exactly the same as SafeMath, except all instances of uint256 will be replaced with uint32 or uint16.
+
+We've gone ahead and implemented that code for you — go ahead and look at safemath.sol to see the code.
+
+Now we need to implement it in ZombieFactory.
+Putting it to the Test
+
+Assignment:
+
+    Declare that we're using SafeMath32 for uint32.
+
+    Declare that we're using SafeMath16 for uint16.
+
+    There's one more line of code in ZombieFactory where we should use a SafeMath method. In the function _createZombie under zombie,push().
+
+using SafeMath for uint256;
+using SafeMath32 for uint32;
+using SafeMath16 for uint16;
+
+ownerZombieCount[msg.sender] = ownerZombieCount[msg.sender].add(1);
+
+## Chapter 12: SafeMath Part 4
+
+Great, now we can implement SafeMath on all the types of uints we used in our DApp!
+
+Let's fix all those potential issues in ZombieAttack. (There was also one zombies[_zombieId].level++; that needed to be fixed in ZombieHelper, but we've taken care of that one for you so we don't take an extra chapter to do so 😉).
+Putting it to the Test
+
+Go ahead and implement SafeMath methods on all the ++ increments in ZombieAttack. 
+
+ randNonce = randNonce.add(1);
+
+ if (rand <= attackVictoryProbability) {
+      myZombie.winCount = myZombie.winCount.add(1);
+      myZombie.level = myZombie.level.add(1);
+      enemyZombie.lossCount = enemyZombie.lossCount.add(1);
+      feedAndMultiply(_zombieId, enemyZombie.dna, "zombie");
+    } else {
+      myZombie.lossCount = myZombie.lossCount.add(1);
+      enemyZombie.winCount = enemyZombie.winCount.add(1);
+      _triggerCooldown(myZombie);
+    }
+
+## Chapter 13: Comments
+
+The Solidity code for our zombie game is finally finished!
+
+In the next lessons, we'll look at how to deploy the code to Ethereum, and how to interact with it with Web3.js.
+
+But one final thing before we let you go in Lesson 5: Let's talk about commenting your code.
+Syntax for comments
+
+Commenting in Solidity is just like JavaScript. You've already seen some examples of single line comments throughout the CryptoZombies lessons:
+
+// This is a single-line comment. It's kind of like a note to self (or to others)
+
+Just add double // anywhere and you're commenting. It's so easy that you should do it all the time.
+
+But I hear you — sometimes a single line is not enough. You are born a writer, after all!
+
+Thus we also have multi-line comments:
+
+contract CryptoZombies {
+  /* This is a multi-lined comment. I'd like to thank all of you
+    who have taken your time to try this programming course.
+    I know it's free to all of you, and it will stay free
+    forever, but we still put our heart and soul into making
+    this as good as it can be.
+
+    Know that this is still the beginning of Blockchain development.
+    We've come very far but there are so many ways to make this
+    community better. If we made a mistake somewhere, you can
+    help us out and open a pull request here:
+    https://github.com/loomnetwork/cryptozombie-lessons
+
+    Or if you have some ideas, comments, or just want to say
+    hi - drop by our Telegram community at https://t.me/loomnetworkdev
+  */
+}
+
+In particular, it's good practice to comment your code to explain the expected behavior of every function in your contract. This way another developer (or you, after a 6 month hiatus from a project!) can quickly skim and understand at a high level what your code does without having to read the code itself.
+
+The standard in the Solidity community is to use a format called natspec, which looks like this:
+
+/// @title A contract for basic math operations
+/// @author H4XF13LD MORRIS 💯💯😎💯💯
+/// @notice For now, this contract just adds a multiply function
+contract Math {
+  /// @notice Multiplies 2 numbers together
+  /// @param x the first uint.
+  /// @param y the second uint.
+  /// @return z the product of (x * y)
+  /// @dev This function does not currently check for overflows
+  function multiply(uint x, uint y) returns (uint z) {
+    // This is just a normal comment, and won't get picked up by natspec
+    z = x * y;
+  }
+}
+
+@title and @author are straightforward.
+
+@notice explains to a user what the contract / function does. @dev is for explaining extra details to developers.
+
+@param and @return are for describing what each parameter and return value of a function are for.
+
+Note that you don't always have to use all of these tags for every function — all tags are optional. But at the very least, leave a @dev note explaining what each function does.
+
+Give it a try anyway, and try adding some natspec tags to ZombieOwnership:
+
+    @title — E.g. A contract that manages transfering zombie ownership
+
+    @author — Your name!
+
+    @dev — E.g. Compliant with OpenZeppelin's implementation of the ERC721 spec draft
+
+
+
+/// @title - a contract that manages zombie ownership.
+/// @author - Harold
+/// @dev - The code is compliant with OpenZepplin's implementation of the ERC721 spec draft.
+
+## Chapter 14: Wrapping It Up
+
+Congratulations! That concludes Lesson 5.
+
+Let's recap:
+
+In this lesson we learned about:
+
+    Tokens, the ERC721 standard, and tradable assets/zombies
+    Libraries and how to use them
+    How to prevent overflows and underflows using the SafeMath library
+    Commenting your code and the natspec standard
+
+This lesson concludes our game's Solidity code!
+
+In the next 2 lessons, we're going to look at how to deploy your contracts and interact with them using web3.js (so you can build a front-end for your DApp).
+
+
