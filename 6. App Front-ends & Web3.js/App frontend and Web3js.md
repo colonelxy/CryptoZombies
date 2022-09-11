@@ -867,8 +867,11 @@ Put it to the Test
     Inside the for loop, copy/paste the code block above that called getZombieDetails(id) for each id and then used $("#zombies").append(...) to add it to our HTML.
 
 
-<div id="zombies"></div>
 
+```
+  <div id="zombies"></div>
+```
+```
 function displayZombies(ids) {
         
       }
@@ -878,7 +881,8 @@ function displayZombies(ids) {
 
     }
     
-
+```
+```
 getZombieDetails(id)
 .then(function(zombie) {
   // Using ES6's "template literals" to inject variables into the HTML.
@@ -894,3 +898,347 @@ getZombieDetails(id)
     </ul>
   </div>`);
 });
+
+```
+
+## Chapter 7: Sending Transactions
+
+Awesome! Now our UI will detect the user's metamask account, and automatically display their zombie army on the homepage.
+
+Now let's look at using send functions to change data on our smart contract.
+
+There are a few major differences from call functions:
+
+    sending a transaction requires a from address of who's calling the function (which becomes msg.sender in your Solidity code). We'll want this to be the user of our DApp, so MetaMask will pop up to prompt them to sign the transaction.
+
+    sending a transaction costs gas
+
+    There will be a significant delay from when the user sends a transaction and when that transaction actually takes effect on the blockchain. This is because we have to wait for the transaction to be included in a block, and the block time for Ethereum is on average 15 seconds. If there are a lot of pending transactions on Ethereum or if the user sends too low of a gas price, our transaction may have to wait several blocks to get included, and this could take minutes.
+
+    Thus we'll need logic in our app to handle the asynchronous nature of this code.
+
+Creating zombies
+
+Let's look at an example with the first function in our contract a new user will call: createRandomZombie.
+
+As a review, here is the Solidity code in our contract:
+
+function createRandomZombie(string _name) public {
+  require(ownerZombieCount[msg.sender] == 0);
+  uint randDna = _generateRandomDna(_name);
+  randDna = randDna - randDna % 100;
+  _createZombie(_name, randDna);
+}
+
+Here's an example of how we could call this function in Web3.js using MetaMask:
+
+function createRandomZombie(name) {
+  // This is going to take a while, so update the UI to let the user know
+  // the transaction has been sent
+  $("#txStatus").text("Creating new zombie on the blockchain. This may take a while...");
+  // Send the tx to our contract:
+  return cryptoZombies.methods.createRandomZombie(name)
+  .send({ from: userAccount })
+  .on("receipt", function(receipt) {
+    $("#txStatus").text("Successfully created " + name + "!");
+    // Transaction was accepted into the blockchain, let's redraw the UI
+    getZombiesByOwner(userAccount).then(displayZombies);
+  })
+  .on("error", function(error) {
+    // Do something to alert the user their transaction has failed
+    $("#txStatus").text(error);
+  });
+}
+
+Our function sends a transaction to our Web3 provider, and chains some event listeners:
+
+    receipt will fire when the transaction is included into a block on Ethereum, which means our zombie has been created and saved on our contract
+    error will fire if there's an issue that prevented the transaction from being included in a block, such as the user not sending enough gas. We'll want to inform the user in our UI that the transaction didn't go through so they can try again.
+
+    Note: You can optionally specify gas and gasPrice when you call send, e.g. .send({ from: userAccount, gas: 3000000 }). If you don't specify this, MetaMask will let the user choose these values.
+
+
+
+  Add a div with ID txStatus — this way we can use this div to update the user with messages with the status of our transactions.
+
+    Below displayZombies, copy / paste the code from createRandomZombie above.
+
+    Let's implement another function: feedOnKitty.
+
+    The logic for calling feedOnKitty will be almost identical — we'll send a transaction that calls the function, and a successful transaction results in a new zombie being created for us, so we'll want to redraw the UI after it's successful.
+
+    Make a copy of createRandomZombie right below it, but make the following changes:
+
+    a) Call the 2nd function feedOnKitty, which takes 2 arguments: zombieId and kittyId
+
+    b) The #txStatus text should update to: "Eating a kitty. This may take a while..."
+
+    c) Make it call feedOnKitty on our contract, and pass the same 2 arguments
+
+    d) The success message on #txStatus should read: "Ate a kitty and spawned a new Zombie!"
+
+```
+<div id="txStatus"></div>
+
+```
+function createRandomZombie(name) {
+  // This is going to take a while, so update the UI to let the user know
+  // the transaction has been sent
+  $("#txStatus").text("Creating new zombie on the blockchain. This may take a while...");
+  // Send the tx to our contract:
+  return cryptoZombies.methods.createRandomZombie(name)
+  .send({ from: userAccount })
+  .on("receipt", function(receipt) {
+    $("#txStatus").text("Successfully created " + name + "!");
+    // Transaction was accepted into the blockchain, let's redraw the UI
+    getZombiesByOwner(userAccount).then(displayZombies);
+  })
+  .on("error", function(error) {
+    // Do something to alert the user their transaction has failed
+    $("#txStatus").text(error);
+  });
+}
+
+
+function createRandomZombie(name) {
+        // This is going to take a while, so update the UI to let the user know
+        // the transaction has been sent
+        $("#txStatus").text("Creating new zombie on the blockchain. This may take a while...");
+        // Send the tx to our contract:
+        return cryptoZombies.methods.createRandomZombie(name)
+        .send({ from: userAccount })
+        .on("receipt", function(receipt) {
+          $("#txStatus").text("Successfully created " + name + "!");
+          // Transaction was accepted into the blockchain, let's redraw the UI
+          getZombiesByOwner(userAccount).then(displayZombies);
+        })
+        .on("error", function(error) {
+          // Do something to alert the user their transaction has failed
+          $("#txStatus").text(error);
+        });
+      }
+
+      function feedOnKitty(zombieId, kittyId) {
+        $("#txStatus").text("Eating a kitty. This may take a while...");
+        return cryptoZombies.methods.feedOnKitty(zombieId, kittyId)
+        .send({ from: userAccount })
+        .on("receipt", function(receipt) {
+          $("#txStatus").text("Ate a kitty and spawned a new Zombie!");
+          getZombiesByOwner(userAccount).then(displayZombies);
+        })
+        .on("error", function(error) {
+          $("#txStatus").text(error);
+        });
+      }
+
+      // Start here
+
+      function getZombieDetails(id) {
+        return cryptoZombies.methods.zombies(id).call()
+      }
+
+      function zombieToOwner(id) {
+        return cryptoZombies.methods.zombieToOwner(id).call()
+      }
+
+      function getZombiesByOwner(owner) {
+        return cryptoZombies.methods.getZombiesByOwner(owner).call()
+      }
+
+
+      ## Chapter 8: Calling Payable Functions
+
+The logic for attack, changeName, and changeDna will be extremely similar, so they're trivial to implement and we won't spend time coding them in this lesson.
+
+    In fact, there's already a lot of repetitive logic in each of these function calls, so it would probably make sense to refactor and put the common code in its own function. (And use a templating system for the txStatus messages — already we're seeing how much cleaner things would be with a framework like Vue.js!)
+
+Let's look at another type of function that requires special treatment in Web3.js — payable functions.
+Level Up!
+
+Recall in ZombieHelper, we added a payable function where the user can level up:
+
+function levelUp(uint _zombieId) external payable {
+  require(msg.value == levelUpFee);
+  zombies[_zombieId].level++;
+}
+
+The way to send Ether along with a function is simple, with one caveat: we need to specify how much to send in wei, not Ether.
+What's a Wei?
+
+A wei is the smallest sub-unit of Ether — there are 10^18 wei in one ether.
+
+That's a lot of zeroes to count — but luckily Web3.js has a conversion utility that does this for us.
+
+// This will convert 1 ETH to Wei
+web3js.utils.toWei("1");
+
+In our DApp, we set levelUpFee = 0.001 ether, so when we call our levelUp function, we can make the user send 0.001 Ether along with it using the following code:
+
+cryptoZombies.methods.levelUp(zombieId)
+.send({ from: userAccount, value: web3js.utils.toWei("0.001", "ether") })
+
+Put it to the Test
+
+Let's add a levelUp function below feedOnKitty. The code will be very similar to feedOnKitty, but:
+
+    The function will take 1 parameter, zombieId
+
+    Pre-transaction, it should display the txStatus text "Leveling up your zombie..."
+
+    When it calls levelUp on the contract, it should send "0.001" ETH converted toWei, as in the example above
+
+    Upon success it should display the text "Power overwhelming! Zombie successfully leveled up"
+
+    We don't need to redraw the UI by querying our smart contract with getZombiesByOwner — because in this case we know the only thing that's changed is the one zombie's level.
+
+
+
+ function levelUp(zombieId) {
+  $("#txStatus").text("Leveling up your zombie...");
+  return cryptoZombies.methods.levelUp(zombieId)
+  .send({ from: userAccount, value: web3js.utils.toWei("0.001", "ether") })
+  .on("receipt", function(receipt) {
+          $("#txStatus").text("Power overwhelming! Zombie successfully leveled up");
+        })
+        .on("error", function(error) {
+          $("#txStatus").text(error);
+        });
+      }
+
+
+## Chapter 9: Subscribing to Events
+
+As you can see, interacting with your contract via Web3.js is pretty straightforward — once you have your environment set up, calling functions and sending transactions is not all that different from a normal web API.
+
+There's one more aspect we want to cover — subscribing to events from your contract.
+Listening for New Zombies
+
+If you recall from zombiefactory.sol, we had an event called NewZombie that we fired every time a new zombie was created:
+
+event NewZombie(uint zombieId, string name, uint dna);
+
+In Web3.js, you can subscribe to an event so your web3 provider triggers some logic in your code every time it fires:
+
+cryptoZombies.events.NewZombie()
+.on("data", function(event) {
+  let zombie = event.returnValues;
+  // We can access this event's 3 return values on the `event.returnValues` object:
+  console.log("A new zombie was born!", zombie.zombieId, zombie.name, zombie.dna);
+}).on("error", console.error);
+
+Note that this would trigger an alert every time ANY zombie was created in our DApp — not just for the current user. What if we only wanted alerts for the current user?
+Using indexed
+
+In order to filter events and only listen for changes related to the current user, our Solidity contract would have to use the indexed keyword, like we did in the Transfer event of our ERC721 implementation:
+
+event Transfer(address indexed _from, address indexed _to, uint256 _tokenId);
+
+In this case, because _from and _to are indexed, that means we can filter for them in our event listener in our front end:
+
+// Use `filter` to only fire this code when `_to` equals `userAccount`
+cryptoZombies.events.Transfer({ filter: { _to: userAccount } })
+.on("data", function(event) {
+  let data = event.returnValues;
+  // The current user just received a zombie!
+  // Do something here to update the UI to show it
+}).on("error", console.error);
+
+As you can see, using events and indexed fields can be quite a useful practice for listening to changes to your contract and reflecting them in your app's front-end.
+Querying past events
+
+We can even query past events using getPastEvents, and use the filters fromBlock and toBlock to give Solidity a time range for the event logs ("block" in this case referring to the Ethereum block number):
+
+cryptoZombies.getPastEvents("NewZombie", { fromBlock: 0, toBlock: "latest" })
+.then(function(events) {
+  // `events` is an array of `event` objects that we can iterate, like we did above
+  // This code will get us a list of every zombie that was ever created
+});
+
+Because you can use this method to query the event logs since the beginning of time, this presents an interesting use case: Using events as a cheaper form of storage.
+
+If you recall, saving data to the blockchain is one of the most expensive operations in Solidity. But using events is much much cheaper in terms of gas.
+
+The tradeoff here is that events are not readable from inside the smart contract itself. But it's an important use-case to keep in mind if you have some data you want to be historically recorded on the blockchain so you can read it from your app's front-end.
+
+For example, we could use this as a historical record of zombie battles — we could create an event for every time one zombie attacks another and who won. The smart contract doesn't need this data to calculate any future outcomes, but it's useful data for users to be able to browse from the app's front-end.
+Put it to the Test
+
+Let's add some code to listen for the Transfer event, and update our app's UI if the current user receives a new zombie.
+
+We'll need to add this code at the end of the startApp function, to make sure the cryptoZombies contract has been initialized before adding an event listener.
+
+    At the end of startApp(), copy/paste the code block above listening for cryptoZombies.events.Transfer
+
+    For the line to update the UI, use getZombiesByOwner(userAccount).then(displayZombies);
+
+
+        // Use `filter` to only fire this code when `_to` equals `userAccount`
+cryptoZombies.events.Transfer({ filter: { _to: userAccount } })
+.on("data", function(event) {
+  let data = event.returnValues;
+  // The current user just received a zombie!
+  getZombiesByOwner(userAccount).then(displayZombies);
+}).on("error", console.error);
+      }
+
+
+## Chapter 10: Wrapping It Up
+
+Congratulations! You've successfully written your first Web3.js front-end that interacts with your smart contract.
+
+As a reward, you get your very own The Phantom of Web3 zombie! Level 3.0 (for Web 3.0 😉), complete with fox mask. Check him out to the right.
+Next Steps
+
+This lesson was intentionally basic. We wanted to show you the core logic you would need in order to interact with your smart contract, but didn't want to take up too much time in order to do a full implementation since the Web3.js portion of the code is quite repetitive, and we wouldn't be introducing any new concepts by making this lesson any longer.
+
+So we've left this implementation bare-bones. Here's a checklist of ideas for things we would want to implement in order to make our front-end a full implementation for our zombie game, if you want to run with this and build it on your own:
+
+    Implementing functions for attack, changeName, changeDna, and the ERC721 functions transfer, ownerOf, balanceOf, etc. The implementation of these functions would be identical to all the other send transactions we covered.
+
+    Implementing an "admin page" where you can execute setKittyContractAddress, setLevelUpFee, and withdraw. Again, there's no special logic on the front-end here — these implementations would be identical to the functions we've already covered. You would just have to make sure you called them from the same Ethereum address that deployed the contract, since they have the onlyOwner modifier.
+
+    There are a few different views in the app we would want to implement:
+
+    a. An individual zombie page, where you can view info about a specific zombie with a permalink to it. This page would render the zombie's appearance, show its name, its owner (with a link to the user's profile page), its win/loss count, its battle history, etc.
+
+    b. A user page, where you could view a user's zombie army with a permalink. You would be able to click on an individual zombie to view its page, and also click on a zombie to attack it if you're logged into MetaMask and have an army.
+
+    c. A homepage, which is a variation of the user page that shows the current user's zombie army. (This is the page we started implementing in index.html).
+
+    Some method in the UI that allows the user to feed on CryptoKitties. We could have a button by each zombie on the homepage that says "Feed Me", then a text box that prompted the user to enter a kitty's ID (or a URL to that kitty, e.g. https://www.cryptokitties.co/kitty/578397). This would then trigger our function feedOnKitty.
+
+    Some method in the UI for the user to attack another user's zombie.
+
+    One way to implement this would be when the user was browsing another user's page, there could be a button that said "Attack This Zombie". When the user clicked it, it would pop up a modal that contains the current user's zombie army and prompt them "Which zombie would you like to attack with?"
+
+    The user's homepage could also have a button by each of their zombies that said "Attack a Zombie". When they clicked it, it could pop up a modal with a search field where they could type in a zombie's ID to search for it. Or an option that said "Attack Random Zombie", which would search a random number for them.
+
+    We would also want to grey out the user's zombies whose cooldown period had not yet passed, so the UI could indicate to the user that they can't yet attack with that zombie, and how long they will have to wait.
+
+    The user's homepage would also have options by each zombie to change name, change DNA, and level up (for a fee). Options would be greyed out if the user wasn't yet high enough level.
+
+    For new users, we should display a welcome message with a prompt to create the first zombie in their army, which calls createRandomZombie().
+
+    We'd probably want to add an Attack event to our smart contract with the user's address as an indexed property, as discussed in the last chapter. This would allow us to build real-time notifications — we could show the user a popup alert when one of their zombies was attacked, so they could view the user/zombie who attacked them and retaliate.
+
+    We would probably also want to implement some sort of front-end caching layer so we aren't always slamming Infura with requests for the same data. (Our current implementation of displayZombies calls getZombieDetails for every single zombie every time we refresh the interface — but realistically we only need to call this for the new zombie that's been added to our army).
+
+    A real-time chat room so you could trash talk other players as you crush their zombie army? Yes plz.
+
+That's just a start — I'm sure we could come up with even more features — and already it's a massive list.
+
+Since there's a lot of front-end code that would go into creating a full interface like this (HTML, CSS, JavaScript and a framework like React or Vue.js), building out this entire front-end would probably be an entire course with 10 lessons in itself. So we'll leave the awesome implementation to you.
+
+    Note: Even though our smart contract is decentralized, this front-end for interacting with our DApp would be totally centralized on our web-server somewhere.
+
+    However, with the SDK we're building at Loom Network https://medium.com/loom-network/loom-network-is-live-scalable-ethereum-dapps-coming-soon-to-a-dappchain-near-you-29d26da00880 , soon you'll be able to serve front-ends like this from their own DAppChain instead of a centralized web server. That way between Ethereum and the Loom DAppChain, your entire app would run 100% on the blockchain.
+
+Conclusion
+
+This concludes Lesson 6. You now have all the skills you need to code a smart contract and a front-end that allows users to interact with it!
+
+In the next lesson, we're going to be covering the final missing piece in this puzzle — deploying your smart contracts to Ethereum.
+
+Go ahead and click "Next Chapter" to claim your rewards!
+
+
